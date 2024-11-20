@@ -5,18 +5,3 @@
 ```
 git clone https://github.com/edvinmandrejev/Pi-MPPI.git
 ```
-2. Install required libraries
-```
-pip install -r requirements.txt
-```
-
-# Running the Algorithm
-
-1. Obtacle Avoidance
-```
-
-```
-2. Terrain Following
-```
-
-```
