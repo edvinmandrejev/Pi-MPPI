@@ -5,3 +5,7 @@
 ```
 git clone https://github.com/edvinmandrejev/Pi-MPPI.git
 ```
+2. Install dependencies
+```
+pip install -r requirements.txt
+```
