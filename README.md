@@ -9,3 +9,10 @@ git clone https://github.com/edvinmandrejev/Pi-MPPI.git
 ```
 pip install -r requirements.txt
 ```
+# Visualization
+Visualization was developed with the help from the following repos.
+```
+https://github.com/eyler94/EE674LQR.git
+http://gitlab.hh.se/jendav/Gazebo_Harbour_Models.git
+https://github.com/andreasBihlmaier/pysdf.git
+```
