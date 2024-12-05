@@ -29,12 +29,12 @@ https://github.com/andreasBihlmaier/pysdf.git
 ```
 ##1. Obstacle avoidance scenario:
 ```
-python3 visualisation_obstacle.py
+roslaunch cessna_plotter model_disp.launch
 ```
 2. Terrain Following scenario
 Launch the environment
 ```
-python3 visualisation_obstacle.py
+python3 point_cloud.py
 ```
 Initialise the point cloud (terrain)
 ```
@@ -42,10 +42,10 @@ python3 visualisation_obstacle.py
 ```
 Initialise the trajectory (path)
 ```
-python3 visualisation_obstacle.py
+python3 path.py
 ```
 Run the visualisation
 ```
-python3 visualisation_obstacle.py
+python3 move.py
 ```
    
