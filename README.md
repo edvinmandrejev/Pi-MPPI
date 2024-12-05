@@ -32,19 +32,20 @@ https://github.com/andreasBihlmaier/pysdf.git
 python3 visualisation_obstacle.py
 ```
 ### Terrain Following scenario:
-Launch the environment
+
+- Launch the environment:
 ```
 roslaunch cessna_plotter model_disp.launch
 ```
-Initialise the point cloud (terrain)
+- Initialise the point cloud (terrain):
 ```
 python3 point_cloud.py 
 ```
-Initialise the trajectory (path)
+- Initialise the trajectory (path):
 ```
 python3 path.py
 ```
-Run the visualisation
+- Run the visualisation:
 ```
 python3 move.py
 ```
