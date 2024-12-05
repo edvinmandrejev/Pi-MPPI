@@ -27,9 +27,9 @@ https://github.com/eyler94/EE674LQR.git
 http://gitlab.hh.se/jendav/Gazebo_Harbour_Models.git
 https://github.com/andreasBihlmaier/pysdf.git
 ```
-##1. Obstacle avoidance scenario:
+1. Obstacle avoidance scenario:
 ```
-roslaunch cessna_plotter model_disp.launch
+python3 visualisation_obstacle.py
 ```
 2. Terrain Following scenario
 Launch the environment
@@ -38,7 +38,7 @@ python3 point_cloud.py
 ```
 Initialise the point cloud (terrain)
 ```
-python3 visualisation_obstacle.py
+roslaunch cessna_plotter model_disp.launch
 ```
 Initialise the trajectory (path)
 ```
@@ -48,4 +48,4 @@ Run the visualisation
 ```
 python3 move.py
 ```
-   
+
