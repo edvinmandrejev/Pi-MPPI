@@ -120,7 +120,7 @@ class MPPI_base():
         self.y_range = y_range
        
         # initialization
-        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (None,None,None,None,1,1,1,1,1,1,1,1,1,1)))
+        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,None,None,None,1,1,1,1,1,1,1,1,1,1)))
         self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
         self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
         self.moving_average_filter_batch = jit(vmap(self.moving_average_filter, in_axes = ( 1, 1 ), out_axes= (1)  ))
@@ -218,8 +218,8 @@ class MPPI_base():
 
 
             # MPPI cost
-            u_mppi = jnp.stack((u[idx],u[idx+self.num],u[idx+self.num*2]))
-            mppi = (self.param_gamma * u_mppi @ jnp.linalg.inv(self.sigma) @ controls_stack[idx]) * self.w_2
+            #u_mppi = jnp.stack((u[idx],u[idx+self.num],u[idx+self.num*2]))
+            mppi = (self.param_gamma * u[idx] @ jnp.linalg.inv(self.sigma) @ controls_stack[idx]) * self.w_2
 
             # Dot cost
             cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot[idx]) - self.v_max))) * self.w_4
@@ -363,7 +363,7 @@ class MPPI_base():
         v_raw = uu[:,0:self.num] + epsilon_v
         pitch_raw = uu[:,self.num:self.num*2] + epsilon_pitch
         roll_raw = uu[:,self.num*2:self.num*3] + epsilon_roll
-
+        uu_mppi_cost = jnp.stack((uu[:,0:self.num], uu[:,self.num:self.num*2] , uu[:,self.num*2:self.num*3]),axis=-1)
         # Clipping contols
 
         v, pitch, roll = self.g_(v_raw, pitch_raw, roll_raw)
@@ -384,7 +384,7 @@ class MPPI_base():
         controls_stack = jnp.stack((v, pitch, roll),axis=-1) #reshaping for mppi cost ()
 
 
-        S_mat = self.compute_cost_mppi_batch(u,                             # None
+        S_mat = self.compute_cost_mppi_batch(uu_mppi_cost,                             # None
                                              x_goal,y_goal,z_goal,          # None, None, None
                                              x_traj_global,y_traj_global,z_traj_global,controls_stack,          # 4   
                                              v_dot,pitch_dot,roll_dot,      # 3
