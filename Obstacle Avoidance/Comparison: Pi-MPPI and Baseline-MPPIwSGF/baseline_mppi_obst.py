@@ -96,7 +96,7 @@ class MPPI_base():
         self.terminal_cost_weight = 1
 
         # initialization
-        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (None,None,None,None, None, None, None, None,1,1,1,1,1,1,1,1,1,1)))
+        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,None,None,None, None, None, None, None,1,1,1,1,1,1,1,1,1,1)))
         self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
         self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
         self.obstacle_cost_batch = jit(vmap(self.obstacle_cost,in_axes = (0,0,0,0,None,None,None)))
@@ -191,8 +191,8 @@ class MPPI_base():
             cost_obstacle = (jnp.sum(cost_obstacle_b) ) * self.w_3
             
             # MPPI cost
-            u_mppi = jnp.stack((u[idx],u[idx+self.num],u[idx+self.num*2]))
-            mppi = (self.param_gamma * u_mppi @ jnp.linalg.inv(self.sigma) @ controls_stack[idx]) * self.w_2
+            #u_mppi = jnp.stack((u[idx],u[idx+self.num],u[idx+self.num*2]))
+            mppi = (self.param_gamma * u[idx] @ jnp.linalg.inv(self.sigma) @ controls_stack[idx]) * self.w_2
 
             # Dot cost
             cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot[idx]) - self.v_max))) * self.w_4
@@ -312,7 +312,7 @@ class MPPI_base():
         return v_dot, v_ddot, pitch_dot, pitch_ddot, roll_dot, roll_ddot
 
     
-    @partial(jit, static_argnums=(0,))
+    #@partial(jit, static_argnums=(0,))
     def baseline_mppi_main(self,u_prev, key,
                    x_init, y_init, z_init, psi_init,
                    v_init, pitch_init, roll_init,
@@ -335,6 +335,9 @@ class MPPI_base():
         v_raw = uu[:,0:self.num] + epsilon_v
         pitch_raw = uu[:,self.num:self.num*2] + epsilon_pitch
         roll_raw = uu[:,self.num*2:self.num*3] + epsilon_roll
+        
+        # Prep for mppi cost
+        uu_mppi_cost = jnp.stack((uu[:,0:self.num], uu[:,self.num:self.num*2] , uu[:,self.num*2:self.num*3]),axis=-1)
 
         # Clipping contols
 
@@ -350,8 +353,7 @@ class MPPI_base():
 
         controls_stack = jnp.stack((v, pitch, roll),axis=-1) #reshaping for mppi cost ()
 
-
-        S_mat = self.compute_cost_mppi_batch(u,                             
+        S_mat = self.compute_cost_mppi_batch(uu_mppi_cost,                             
                                              x_goal,y_goal,z_goal,          
                                              x_obs, y_obs, z_obs, r_obs,    
                                              x,y,z,controls_stack,          
