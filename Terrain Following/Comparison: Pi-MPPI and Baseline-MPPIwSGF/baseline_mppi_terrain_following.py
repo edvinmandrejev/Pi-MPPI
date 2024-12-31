@@ -444,7 +444,7 @@ class MPPI_base():
         
         v_prev = jnp.zeros((self.num))
         v_prev = v_prev.at[:-1].set(v_new[1:])
-        v_prev = v_prev.at[-1]. set(v_new[-1])
+        v_prev = v_prev.at[-1].set(v_new[-1])
 
         pitch_prev = jnp.zeros((self.num))
         pitch_prev = pitch_prev.at[:-1].set(pitch_new[1:])
