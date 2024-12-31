@@ -312,7 +312,7 @@ class MPPI_base():
         return v_dot, v_ddot, pitch_dot, pitch_ddot, roll_dot, roll_ddot
 
     
-    #@partial(jit, static_argnums=(0,))
+    @partial(jit, static_argnums=(0,))
     def baseline_mppi_main(self,u_prev, key,
                    x_init, y_init, z_init, psi_init,
                    v_init, pitch_init, roll_init,
