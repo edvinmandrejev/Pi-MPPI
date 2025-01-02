@@ -435,7 +435,6 @@ class MPPI_base():
 
         ddot_new = jnp.array([v_ddot_new[0][3],pitch_ddot_new[0][3],roll_ddot_new[0][3]])
 
-        # Optimal trajectory
 
         return key, init_states_upd, init_controls_upd, dot_new, ddot_new, u_prev
 
