@@ -91,7 +91,7 @@ class proj_cem_fwv():
 		self.rho_projection = 1.0
 		self.rho_ineq = 1.0
 		
-		self.beta = 0.1
+		#self.beta = 0.1
 
 		####################################
 		
@@ -119,12 +119,9 @@ class proj_cem_fwv():
 
 		self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
 
-		self.param_exploration = 0.0  # constant parameter of mppi
 		self.param_lambda = 50  # constant parameter of mppi
-		self.param_alpha = 1.0 # constant parameter of mppi
+		self.param_alpha = 0.99 # constant parameter of mppi
 		self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
-		self.stage_cost_weight = 1
-		self.terminal_cost_weight = 1
 		######################################################################################## matrices for computing initial guess based on neural parameters
 
 
