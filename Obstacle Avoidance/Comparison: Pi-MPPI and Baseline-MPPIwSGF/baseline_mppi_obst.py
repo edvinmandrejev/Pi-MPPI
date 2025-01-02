@@ -79,21 +79,19 @@ class MPPI_base():
         mean_roll = jnp.zeros(self.num) 
         self.mean = jnp.hstack(( mean_v, mean_pitch, mean_roll ))
 
-
-        cov_v_control = jnp.identity(self.num)*0.02
-        cov_control_pitch = jnp.identity(self.num)*0.002
-        cov_control_roll = jnp.identity(self.num)*0.0002
+	cov_v = 0.02
+        cov_pitch = 0.002
+        cov_roll = 0.0002
+        cov_v_control = jnp.identity(self.num)*cov_v
+        cov_control_pitch = jnp.identity(self.num)*cov_pitch
+        cov_control_roll = jnp.identity(self.num)*cov_roll
 
         self.cov = jax.scipy.linalg.block_diag(cov_v_control, cov_control_pitch,cov_control_roll)
-        self.sigma = jnp.diag(jnp.array([0.02,0.002,0.0002]))
-        self.beta = 5
+        self.sigma = jnp.diag(jnp.array([cov_v,cov_pitch,cov_roll]))
         #mppi
-        self.param_exploration = 0.0  # constant parameter of mppi
         self.param_lambda = 50  # constant parameter of mppi
-        self.param_alpha = 1.0 # constant parameter of mppi
+        self.param_alpha = 0.99 # constant parameter of mppi
         self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
-        self.stage_cost_weight = 1
-        self.terminal_cost_weight = 1
 
         # initialization
         self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,None,None,None, None, None, None, None,1,1,1,1,1,1,1,1,1,1)))
