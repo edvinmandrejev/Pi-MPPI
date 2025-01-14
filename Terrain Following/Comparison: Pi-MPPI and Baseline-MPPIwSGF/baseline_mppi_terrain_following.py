@@ -50,8 +50,8 @@ class MPPI_base():
         self.pitch_max = pitch_max
         self.pitch_min = pitch_min
 
-        self.pitch_dot_max = pitchdot_max
-        self.pitch_dot_min = pitchdot_min
+        self.pitchdot_max = pitchdot_max
+        self.pitchdot_min = pitchdot_min
 
         self.pitchddot_max = pitchddot_max
         self.pitchddot_min = pitchddot_min
@@ -217,9 +217,9 @@ class MPPI_base():
             mppi = (self.param_gamma * u[idx] @ jnp.linalg.inv(self.sigma) @ controls_stack[idx]) * self.w_2
 
             # Dot cost
-            cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot[idx]) - self.v_max))) * self.w_4
-            cost_pitch_dot = (jnp.maximum(0,(jnp.abs(pitch_dot[idx]) - self.pitch_max))) * self.w_5
-            cost_roll_dot = (jnp.maximum(0,(jnp.abs(roll_dot[idx]) - self.roll_max))) * self.w_6
+            cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot[idx]) - self.vdot_max))) * self.w_4
+            cost_pitch_dot = (jnp.maximum(0,(jnp.abs(pitch_dot[idx]) - self.pitchdot_max))) * self.w_5
+            cost_roll_dot = (jnp.maximum(0,(jnp.abs(roll_dot[idx]) - self.rolldot_max))) * self.w_6
 
             # DDot cost
 
