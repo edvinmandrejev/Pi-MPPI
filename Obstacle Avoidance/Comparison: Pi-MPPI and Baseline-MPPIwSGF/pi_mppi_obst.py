@@ -504,11 +504,11 @@ class pi_mppi():
 		c_v_samples, c_pitch_samples, c_roll_samples, key = self.compute_control_samples(key, mean, cov_control_init)
 
 
-		c_v_raw_samples = c_v_samples
-		c_pitch_raw_samples = c_pitch_samples 
-		c_roll_raw_samples = c_roll_samples
+		# c_v_raw_samples = c_v_samples
+		# c_pitch_raw_samples = c_pitch_samples 
+		# c_roll_raw_samples = c_roll_samples
 
-		raw_samples = jnp.hstack((c_v_raw_samples,c_pitch_raw_samples,c_roll_raw_samples))
+		# raw_samples = jnp.hstack((c_v_raw_samples,c_pitch_raw_samples,c_roll_raw_samples))
 
 		################ some projection parameters
 			
