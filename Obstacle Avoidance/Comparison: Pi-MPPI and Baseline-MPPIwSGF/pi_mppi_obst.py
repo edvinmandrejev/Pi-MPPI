@@ -111,7 +111,7 @@ class pi_mppi():
 		
 		self.lamda = 0.9
 		self.g = 9.81
-		self.vec_product = jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
+		# self.vec_product = jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
 
 		self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,1,1,1,None,None,None, None, None,None,None)))
 		self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
@@ -392,28 +392,28 @@ class pi_mppi():
 
 		return cost
 
-	@partial(jit, static_argnums=(0,))
-	def comp_prod(self, diffs, d ):
-		term_1 = jnp.expand_dims(diffs, axis = 1)
-		term_2 = jnp.expand_dims(diffs, axis = 0)
-		prods = d * jnp.outer(term_1,term_2)
-		# prods = d*jnp.outer(diffs,diffs)
-		return prods	
+	# @partial(jit, static_argnums=(0,))
+	# def comp_prod(self, diffs, d ):
+	# 	term_1 = jnp.expand_dims(diffs, axis = 1)
+	# 	term_2 = jnp.expand_dims(diffs, axis = 0)
+	# 	prods = d * jnp.outer(term_1,term_2)
+	# 	# prods = d*jnp.outer(diffs,diffs)
+	# 	return prods	
 
-	@partial(jit, static_argnums=(0,))
-	def comp_mean_cov(self, cost_ellite, mean_control_prev, cov_control_prev, samples_ellite):
+	# @partial(jit, static_argnums=(0,))
+	# def comp_mean_cov(self, cost_ellite, mean_control_prev, cov_control_prev, samples_ellite):
 		
-		w = cost_ellite
-		w_min = jnp.min(cost_ellite)
-		w = jnp.exp(-(1/self.lamda) * (w - w_min ) )
-		sum_w = jnp.sum(w, axis = 0)
-		mean_control = (1-self.alpha_mean)*mean_control_prev + self.alpha_mean*(jnp.sum( (samples_ellite * w[:,jnp.newaxis]) , axis= 0)/ sum_w)
-		diffs = (samples_ellite - mean_control)
-		prod_result = self.vec_product(diffs, w)
-		cov_control = (1-self.alpha_cov)*cov_control_prev + self.alpha_cov*(jnp.sum( prod_result , axis = 0)/jnp.sum(w, axis = 0)) + 0.0001*jnp.identity(self.nvar*3)
+	# 	w = cost_ellite
+	# 	w_min = jnp.min(cost_ellite)
+	# 	w = jnp.exp(-(1/self.lamda) * (w - w_min ) )
+	# 	sum_w = jnp.sum(w, axis = 0)
+	# 	mean_control = (1-self.alpha_mean)*mean_control_prev + self.alpha_mean*(jnp.sum( (samples_ellite * w[:,jnp.newaxis]) , axis= 0)/ sum_w)
+	# 	diffs = (samples_ellite - mean_control)
+	# 	prod_result = self.vec_product(diffs, w)
+	# 	cov_control = (1-self.alpha_cov)*cov_control_prev + self.alpha_cov*(jnp.sum( prod_result , axis = 0)/jnp.sum(w, axis = 0)) + 0.0001*jnp.identity(self.nvar*3)
 
 		
-		return mean_control, cov_control
+	# 	return mean_control, cov_control
 		
 
 	@partial(jit, static_argnums=(0,))
@@ -539,7 +539,7 @@ class pi_mppi():
 
 
 		S_mat = self.compute_cost_mppi_batch(controls_stack,x_traj,y_traj,z_traj,x_fin, y_fin, z_fin,x_obs,y_obs,z_obs,r_obs)
-
+		
 		S = jnp.sum(S_mat,axis = 0)
 
 		rho = S.min()
