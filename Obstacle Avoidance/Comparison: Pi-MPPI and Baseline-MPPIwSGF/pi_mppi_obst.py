@@ -379,7 +379,6 @@ class pi_mppi():
 			cost_obstacle_b = self.obstacle_cost_batch(x_obs,y_obs,z_obs,r_obs,x[idx],y[idx],z[idx])
 			cost_obstacle = jnp.sum(cost_obstacle_b)
 
-
 			mppi = self.param_gamma * u_mean.T @ jnp.linalg.inv(sigma) @ controls_stack[idx]
 
 			cost = cost_goal * self.w_1 + mppi*self.w_2 + cost_obstacle*self.w_3
@@ -535,9 +534,6 @@ class pi_mppi():
 		x_traj, y_traj, z_traj, psi_samples, psidot_samples = self.compute_rollouts(x_init, y_init, z_init, psi_init, v_samples, roll_samples, pitch_samples, pitchdot_samples)
 
 		controls_stack = jnp.stack((v_samples,pitch_samples,roll_samples),axis=-1)
-
-
-
 
 		S_mat = self.compute_cost_mppi_batch(controls_stack,x_traj,y_traj,z_traj,x_fin, y_fin, z_fin,x_obs,y_obs,z_obs,r_obs)
 		
