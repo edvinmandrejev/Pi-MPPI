@@ -510,6 +510,7 @@ class pi_mppi():
 
 		# raw_samples = jnp.hstack((c_v_raw_samples,c_pitch_raw_samples,c_roll_raw_samples))
 
+
 		################ some projection parameters
 			
 		c_v_samples, c_pitch_samples, c_roll_samples, res_v, res_pitch, res_roll, lamda_v, lamda_pitch,\
@@ -519,9 +520,9 @@ class pi_mppi():
 
 		proj_samples = jnp.hstack((c_v_samples,c_pitch_samples,c_roll_samples))
 
-		res_v_cost = res_v.T[:, -1]
-		res_pitch_cost = res_pitch.T[:, -1]
-		res_roll_cost = res_roll.T[:, -1]
+		# res_v_cost = res_v.T[:, -1]
+		# res_pitch_cost = res_pitch.T[:, -1]
+		# res_roll_cost = res_roll.T[:, -1]
 
 		v_samples = jnp.dot(self.P_jax, c_v_samples.T).T 
 		vdot_samples = jnp.dot(self.Pdot_jax, c_v_samples.T).T
