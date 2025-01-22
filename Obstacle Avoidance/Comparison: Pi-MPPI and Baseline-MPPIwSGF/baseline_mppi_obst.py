@@ -10,9 +10,9 @@ import jax.lax as lax
 
 class MPPI_base():
     def __init__(self,num,
-                  v_max, v_min, vdot_max, vdot_min, vddot_max,vddot_min,
+                    v_max, v_min, vdot_max, vdot_min, vddot_max,vddot_min,
                     pitch_max,pitch_min, pitchdot_max, pitchdot_min, pitchddot_max, pitchddot_min,
-                      roll_max, roll_min, rolldot_max, rolldot_min, rollddot_max, rollddot_min):
+                        roll_max, roll_min, rolldot_max, rolldot_min, rollddot_max, rollddot_min):
         
         # Smoothening
         self.window_size = 20
@@ -79,7 +79,7 @@ class MPPI_base():
         mean_roll = jnp.zeros(self.num) 
         self.mean = jnp.hstack(( mean_v, mean_pitch, mean_roll ))
 
-	cov_v = 0.02
+        cov_v = 0.02
         cov_pitch = 0.002
         cov_roll = 0.0002
         cov_v_control = jnp.identity(self.num)*cov_v
