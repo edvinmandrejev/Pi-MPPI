@@ -517,7 +517,7 @@ class pi_mppi():
 			 											 s_roll_init, c_v_samples, c_pitch_samples, c_roll_samples, b_eq_v, b_eq_pitch, b_eq_roll)
 
 
-		proj_samples = jnp.hstack((c_v_samples,c_pitch_samples,c_roll_samples))
+		# proj_samples = jnp.hstack((c_v_samples,c_pitch_samples,c_roll_samples))
 
 		# res_v_cost = res_v.T[:, -1]
 		# res_pitch_cost = res_pitch.T[:, -1]
