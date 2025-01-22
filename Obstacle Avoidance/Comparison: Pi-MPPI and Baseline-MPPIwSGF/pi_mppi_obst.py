@@ -487,9 +487,9 @@ class pi_mppi():
 																																		
 		b_eq_v, b_eq_pitch, b_eq_roll = self.compute_boundary_vec(v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init)
 
-		cov_v_control = 200*jnp.identity(self.nvar)
-		cov_angle_control = jnp.identity(self.nvar*2)*15
-		cov_control_init = jax.scipy.linalg.block_diag(cov_v_control, cov_angle_control)*10
+		cov_v_control = 20*jnp.identity(self.nvar)
+		cov_angle_control = jnp.identity(self.nvar*2)*2
+		cov_control_init = jax.scipy.linalg.block_diag(cov_v_control, cov_angle_control)
 		
 		lamda_v_init = jnp.zeros((self.num_batch, self.nvar)) 
 		lamda_pitch_init = jnp.zeros((self.num_batch, self.nvar))
