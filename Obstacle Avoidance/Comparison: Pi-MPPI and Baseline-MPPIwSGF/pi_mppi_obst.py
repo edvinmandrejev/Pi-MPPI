@@ -119,13 +119,11 @@ class pi_mppi():
 		self.obstacle_cost_batch = jit(vmap(self.obstacle_cost,in_axes = (0,0,0,0,None,None,None)))
 
 		self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
-<<<<<<< HEAD
+
 		self.compute_w_epsilon_batch = jit(vmap(self.compute_w_epsilon,in_axes = (0,0)))
 
 		self.param_exploration = 0.0  # constant parameter of mppi
-=======
-							
->>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
+
 		self.param_lambda = 50  # constant parameter of mppi
 		self.param_alpha = 0.99 # constant parameter of mppi
 		self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
@@ -396,33 +394,13 @@ class pi_mppi():
 						x,y,z,controls_stack,
 						):
 		u_mean = jnp.mean(controls_stack,axis = 0)
-		print(u_mean.shape)
+
 		sigma = jnp.cov((controls_stack - u_mean).T)
 		cost_goal, cost_obstacle, mppi = self.compute_cost_batch(x_goal,y_goal,z_goal,
 																x_obs,y_obs,z_obs,r_obs,
 																x,y,z,controls_stack,u_mean,sigma
 																)
-
-<<<<<<< HEAD
 		cost = cost_goal + cost_obstacle + mppi
-=======
-		def cost_lax(carry,idx):
-			cost = carry
-			cost_goal = (x[idx]-x_fin)**2+(y[idx]-y_fin)**2+((z[idx]-z_fin)**2)
-
-			cost_obstacle_b = self.obstacle_cost_batch(x_obs,y_obs,z_obs,r_obs,x[idx],y[idx],z[idx])
-			cost_obstacle = jnp.sum(cost_obstacle_b)
-
-			mppi = self.param_gamma * u_mean.T @ jnp.linalg.inv(sigma) @ controls_stack[idx]
-
-			cost = cost_goal * self.w_1 + mppi*self.w_2 + cost_obstacle*self.w_3
-
-			return(cost),(cost)
-		
-		carry_init = 0
-		carry_final, result = lax.scan(cost_lax, carry_init, jnp.arange(self.num_batch))
-		cost = result
->>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
 
 		return cost
 	
@@ -566,18 +544,11 @@ class pi_mppi():
 
 		controls_stack = jnp.stack((v_samples,pitch_samples,roll_samples),axis=-1)
 
-<<<<<<< HEAD
-
-
-
 		S_mat = self.compute_cost_mppi_batch(x_fin,y_fin,z_fin,
 					x_obs,y_obs,z_obs,r_obs,
 					x_traj,y_traj,z_traj,controls_stack)
 
-=======
-		S_mat = self.compute_cost_mppi_batch(controls_stack,x_traj,y_traj,z_traj,x_fin, y_fin, z_fin,x_obs,y_obs,z_obs,r_obs)
-		
->>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
+
 		S = jnp.sum(S_mat,axis = 0)
 
 		rho = S.min()
