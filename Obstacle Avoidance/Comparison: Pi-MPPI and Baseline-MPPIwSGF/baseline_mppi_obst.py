@@ -1,8 +1,8 @@
 import numpy as np
 import jax.numpy as jnp
-import matplotlib.pyplot as plt 
+#import matplotlib.pyplot as plt 
 
-import bernstein_coeff_order10_arbitinterval
+#import bernstein_coeff_order10_arbitinterval
 from functools import partial
 from jax import jit, random,vmap
 import jax
@@ -12,7 +12,7 @@ class MPPI_base():
     def __init__(self,num,
                   v_max, v_min, vdot_max, vdot_min, vddot_max,vddot_min,
                     pitch_max,pitch_min, pitchdot_max, pitchdot_min, pitchddot_max, pitchddot_min,
-                      roll_max, roll_min, rolldot_max, rolldot_min, rollddot_max, rollddot_min):
+                      roll_max, roll_min, rolldot_max, rolldot_min, rollddot_max, rollddot_min,num_batch,beta):
         
         # Smoothening
         self.window_size = 20
@@ -29,15 +29,24 @@ class MPPI_base():
         # self.w_8 = 10          # pitchddot weight 1000 
         # self.w_9 = 5000           # rollddot weight 500000 
 
-        self.w_1 = 50            # goal reaching weight 5
+        self.w_1 = 4            # goal reaching weight 5
         self.w_2 = .0001            # mppi weight
-        self.w_3 = 10            # obstacle weight 10
-        self.w_4 = 100           # vdot weight 100
-        self.w_5 = 100            # pitchdot weight 100
-        self.w_6 = 100            # roll weight 100
-        self.w_7 = 10000           # vddot weight 10000
-        self.w_8 = 1000          # pitchddot weight 1000 
-        self.w_9 = 500000 
+        self.w_3 = 65            # obstacle weight 10
+        # self.w_4 = 100           # vdot weight 100
+        # self.w_5 = 100            # pitchdot weight 100
+        # self.w_6 = 100            # roll weight 100
+        # self.w_7 = 10000           # vddot weight 10000
+        # self.w_8 = 1000          # pitchddot weight 1000 
+        # self.w_9 = 500000 
+
+
+        self.w_4 = 700           # vdot weight 100
+        self.w_5 = 500            # pitchdot weight 100
+        self.w_6 = 700           # roll weight 100
+        self.w_7 = 500           # vddot weight 10000
+        self.w_8 = 500          # pitchddot weight 1000 
+        self.w_9 = 500 
+
 
         ### Constraints ###
 
@@ -69,7 +78,7 @@ class MPPI_base():
         self.rollddot_min = rollddot_min
 
         self.g = 9.81
-        self.num_batch = 1000
+        self.num_batch = num_batch
         self.num = num
         self.t = 0.2
 
@@ -78,27 +87,36 @@ class MPPI_base():
         mean_pitch = jnp.zeros(self.num)
         mean_roll = jnp.zeros(self.num) 
         self.mean = jnp.hstack(( mean_v, mean_pitch, mean_roll ))
+#0.008, 0.0015, 0.006
 
-
-        cov_v_control = jnp.identity(self.num)*0.02
-        cov_control_pitch = jnp.identity(self.num)*0.002
-        cov_control_roll = jnp.identity(self.num)*0.0002
+        # cov_v_control = jnp.identity(self.num)*0.02
+        # cov_control_pitch = jnp.identity(self.num)*0.002
+        # cov_control_roll = jnp.identity(self.num)*0.0002
+        v_cov = 0.03/2 #0.03
+        pitch_cov = 0.0003/2 #0.0003 
+        roll_cov = 0.0002/2   #0.0002
+        
+        cov_v_control = jnp.identity(self.num)*v_cov
+        cov_control_pitch = jnp.identity(self.num)*pitch_cov
+        cov_control_roll = jnp.identity(self.num)*roll_cov
 
         self.cov = jax.scipy.linalg.block_diag(cov_v_control, cov_control_pitch,cov_control_roll)
-        self.sigma = jnp.diag(jnp.array([0.02,0.002,0.0002]))
-        self.beta = 5
+        self.sigma = jnp.diag(jnp.array([v_cov, pitch_cov, roll_cov]))
+        #self.beta = 5
         #mppi
         self.param_exploration = 0.0  # constant parameter of mppi
-        self.param_lambda = 50  # constant parameter of mppi
-        self.param_alpha = 1.0 # constant parameter of mppi
+        self.param_lambda = beta  # constant parameter of mppi
+        self.param_alpha = 0.99 # constant parameter of mppi
         self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
         self.stage_cost_weight = 1
         self.terminal_cost_weight = 1
 
         # initialization
         self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,None,None,None, None, None, None, None,1,1,1,1,1,1,1,1,1,1)))
+        self.compute_cost_batch = jit(vmap(self.compute_cost,in_axes = (0,None,None,None, None, None, None, None,0,0,0,0,0,0,0,0,0,0)))
         self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
         self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
+        self.compute_w_epsilon_batch = jit(vmap(self.compute_w_epsilon,in_axes = (0,0)))
         self.obstacle_cost_batch = jit(vmap(self.obstacle_cost,in_axes = (0,0,0,0,None,None,None)))
 
         self.moving_average_filter_batch = jit(vmap(self.moving_average_filter, in_axes = ( 1, 1 ), out_axes= (1)  ))
@@ -109,7 +127,7 @@ class MPPI_base():
     def compute_states(self,v_samples,pitch_samples,pitchdot_samples,roll_samples,psi_init, pitch_init, x_init,y_init,z_init):
         
         R = ( self.g /v_samples)*jnp.sin(roll_samples)*jnp.cos(pitch_samples)
-        Q = (pitchdot_samples-jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
+        Q = (pitchdot_samples+jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
         psidot_samples = (jnp.sin(roll_samples)/jnp.cos(pitch_samples)*Q + jnp.cos(roll_samples)/jnp.cos(pitch_samples)*R)
         psi_samples = psi_init+jnp.cumsum(psidot_samples*self.t, axis = 1)
         psi_samples = jnp.hstack(( psi_init*jnp.ones(( self.num_batch, 1 )), psi_samples[:, 0:-1]    ))
@@ -133,7 +151,7 @@ class MPPI_base():
     def compute_rollouts_mppi(self, v_samples,pitch_samples,pitchdot_samples,roll_samples,psi_init, pitch_init, x_init,y_init,z_init):
 
         R = ( self.g /v_samples)*jnp.sin(roll_samples)*jnp.cos(pitch_samples)
-        Q = (pitchdot_samples-jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
+        Q = (pitchdot_samples+jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
         psidot_samples = (jnp.sin(roll_samples)/jnp.cos(pitch_samples)*Q + jnp.cos(roll_samples)/jnp.cos(pitch_samples)*R)
         psi_samples = psi_init+jnp.cumsum(psidot_samples*self.t)
 
@@ -172,48 +190,58 @@ class MPPI_base():
     
 
     @partial(jit, static_argnums=(0,))
-    def compute_cost_mppi(self,u,
+    def compute_cost(self,u,
                           x_goal,y_goal,z_goal,
                           x_obs,y_obs,z_obs,r_obs,
                           x,y,z,controls_stack,
                           v_dot,pitch_dot,roll_dot,
                             v_ddot,pitch_ddot, roll_ddot):
 
-        def cost_lax(carry,idx): 
+        # Goal reaching cost
+        cost_goal = ((x-x_goal)**2+(y-y_goal)**2+((z-z_goal)**2)) * self.w_1 
 
-            cost = carry
+        #Obstacle cost
+        cost_obstacle_b = self.obstacle_cost_batch(x_obs,y_obs,z_obs,r_obs,x,y,z)
+        cost_obstacle = (jnp.sum(cost_obstacle_b) ) * self.w_3
+        
+        # MPPI cost
+        #u_mppi = jnp.stack((u[idx],u[idx+self.num],u[idx+self.num*2]))
+        mppi = (self.param_gamma * u @ jnp.linalg.inv(self.sigma) @ controls_stack) * self.w_2
 
-            # Goal reaching cost
-            cost_goal = ((x[idx]-x_goal)**2+(y[idx]-y_goal)**2+((z[idx]-z_goal)**2)) * self.w_1 
+        # Dot cost
+        cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot) - self.v_max))) * self.w_4
+        cost_pitch_dot = (jnp.maximum(0,(jnp.abs(pitch_dot) - self.pitch_max))) * self.w_5
+        cost_roll_dot = (jnp.maximum(0,(jnp.abs(roll_dot) - self.roll_max))) * self.w_6
 
-            #Obstacle cost
-            cost_obstacle_b = self.obstacle_cost_batch(x_obs,y_obs,z_obs,r_obs,x[idx],y[idx],z[idx])
-            cost_obstacle = (jnp.sum(cost_obstacle_b) ) * self.w_3
-            
-            # MPPI cost
-            #u_mppi = jnp.stack((u[idx],u[idx+self.num],u[idx+self.num*2]))
-            mppi = (self.param_gamma * u[idx] @ jnp.linalg.inv(self.sigma) @ controls_stack[idx]) * self.w_2
+        # DDot cost
 
-            # Dot cost
-            cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot[idx]) - self.v_max))) * self.w_4
-            cost_pitch_dot = (jnp.maximum(0,(jnp.abs(pitch_dot[idx]) - self.pitch_max))) * self.w_5
-            cost_roll_dot = (jnp.maximum(0,(jnp.abs(roll_dot[idx]) - self.roll_max))) * self.w_6
+        cost_v_ddot = (jnp.maximum(0,(jnp.abs(v_ddot) - self.vddot_max))) * self.w_7
+        cost_pitch_ddot = (jnp.maximum(0,(jnp.abs(pitch_ddot) - self.pitchddot_max))) * self.w_8
+        cost_roll_ddot = (jnp.maximum(0,(jnp.abs(roll_ddot) - self.rollddot_max))) * self.w_9
 
-            # DDot cost
+        return cost_goal, cost_obstacle, mppi, cost_v_dot, cost_pitch_dot, cost_roll_dot, cost_v_ddot, cost_pitch_ddot, cost_roll_ddot
 
-            cost_v_ddot = (jnp.maximum(0,(jnp.abs(v_ddot[idx]) - self.vddot_max))) * self.w_7
-            cost_pitch_ddot = (jnp.maximum(0,(jnp.abs(pitch_ddot[idx]) - self.pitchddot_max))) * self.w_8
-            cost_roll_ddot = (jnp.maximum(0,(jnp.abs(roll_ddot[idx]) - self.rollddot_max))) * self.w_9
+    @partial(jit, static_argnums=(0,))
+    def compute_cost_mppi(self,u,
+                          x_goal,y_goal,z_goal,
+                          x_obs,y_obs,z_obs,r_obs,
+                          x,y,z,controls_stack,
+                          v_dot,pitch_dot,roll_dot,
+                          v_ddot,pitch_ddot, roll_ddot):
 
-            cost = cost_goal + cost_obstacle + mppi + cost_v_dot + cost_pitch_dot + cost_roll_dot + cost_v_ddot + cost_pitch_ddot + cost_roll_ddot
+        cost_goal, cost_obstacle, mppi, cost_v_dot, cost_pitch_dot, cost_roll_dot,\
+             cost_v_ddot, cost_pitch_ddot, cost_roll_ddot = self.compute_cost_batch(u,
+                                                                                    x_goal,y_goal,z_goal,
+                                                                                    x_obs,y_obs,z_obs,r_obs,
+                                                                                    x,y,z,controls_stack,
+                                                                                    v_dot,pitch_dot,roll_dot,
+                                                                                    v_ddot,pitch_ddot, roll_ddot)
 
-            return (cost),(cost)
-
-        carry_init = 0
-        carry_final, result = lax.scan(cost_lax, carry_init, jnp.arange(self.num_batch))
-        cost = result
+        cost = cost_goal + cost_obstacle + mppi + cost_v_dot + cost_pitch_dot + cost_roll_dot + cost_v_ddot + cost_pitch_ddot + cost_roll_ddot
 
         return cost
+    
+
     
     @partial(jit, static_argnums=(0,))
     def _compute_weights(self, S, rho, eta):
@@ -225,19 +253,14 @@ class MPPI_base():
     
     @partial(jit, static_argnums=(0,))
     def compute_epsilon(self, epsilon, w): 
-        w_epsilon_init = jnp.zeros((3))
-
-        def lax_eps(carry,idx):
-
-            w_epsilon = carry
-            w_epsilon = w_epsilon + w[idx] * epsilon[idx]
-            return (w_epsilon),(0)
-
-        carry_init = (w_epsilon_init)
-        carry_final,result = jax.lax.scan(lax_eps,carry_init,jnp.arange(self.num_batch))
-        w_epsilon = carry_final
+        we = self.compute_w_epsilon_batch(epsilon,w)
+        w_epsilon = jnp.sum(we,axis = 0)
 
         return w_epsilon
+    
+    @partial(jit, static_argnums=(0,))
+    def compute_w_epsilon(self,epsilon,w):
+        return (w*epsilon)
     
     @partial(jit, static_argnums=(0,))
     def g_(self, v, pitch, roll):
@@ -312,7 +335,7 @@ class MPPI_base():
         return v_dot, v_ddot, pitch_dot, pitch_ddot, roll_dot, roll_ddot
 
     
-    #@partial(jit, static_argnums=(0,))
+    @partial(jit, static_argnums=(0,))
     def baseline_mppi_main(self,u_prev, key,
                    x_init, y_init, z_init, psi_init,
                    v_init, pitch_init, roll_init,
@@ -436,6 +459,7 @@ class MPPI_base():
         ddot_new = jnp.array([v_ddot_new[0][3],pitch_ddot_new[0][3],roll_ddot_new[0][3]])
 
         # Optimal trajectory
+
 
         return key, init_states_upd, init_controls_upd, dot_new, ddot_new, u_prev
 

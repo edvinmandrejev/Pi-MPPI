@@ -1,4 +1,3 @@
-
 import numpy as np
 import jax.numpy as jnp
 import matplotlib.pyplot as plt 
@@ -9,7 +8,7 @@ from jax import jit, random,vmap
 import jax
 import jax.lax as lax
 
-class proj_cem_fwv():
+class pi_mppi():
 
 	def __init__(self,v_max, v_min, vdot_max, vdot_min, vddot_max,vddot_min,
 					pitch_max,pitch_min, pitchdot_max, pitchdot_min, pitchddot_max, pitchddot_min,
@@ -113,11 +112,14 @@ class proj_cem_fwv():
 		self.g = 9.81
 		self.vec_product = jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
 
-		self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,1,1,1,None,None,None, None, None,None,None)))
+		self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (None,None,None,None,None,None,None,1,1,1,1)))
+		self.compute_cost_batch = jit(vmap(self.compute_cost,in_axes=((None,None,None,None,None,None,None,0,0,0,0,None,None))))
+
 		self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
 		self.obstacle_cost_batch = jit(vmap(self.obstacle_cost,in_axes = (0,0,0,0,None,None,None)))
 
 		self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
+		self.compute_w_epsilon_batch = jit(vmap(self.compute_w_epsilon,in_axes = (0,0)))
 
 		self.param_exploration = 0.0  # constant parameter of mppi
 		self.param_lambda = 50  # constant parameter of mppi
@@ -318,7 +320,7 @@ class proj_cem_fwv():
 	def compute_rollouts(self,  x_init, y_init, z_init, psi_init, v_samples, roll_samples, pitch_samples, pitchdot_samples):
 		
 		R = ( self.g /v_samples)*jnp.sin(roll_samples)*jnp.cos(pitch_samples)
-		Q = (pitchdot_samples-jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
+		Q = (pitchdot_samples+jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
 		psidot_samples = (jnp.sin(roll_samples)/jnp.cos(pitch_samples)*Q + jnp.cos(roll_samples)/jnp.cos(pitch_samples)*R)
 		psi_samples = psi_init+jnp.cumsum(psidot_samples*self.t, axis = 1)
 		psi_samples = jnp.hstack(( psi_init*jnp.ones(( self.num_batch, 1 )), psi_samples[:, 0:-1]    ))
@@ -341,7 +343,7 @@ class proj_cem_fwv():
 	def compute_rollouts_mppi(self,  x_init, y_init, z_init, psi_init, v_samples, roll_samples, pitchdot_samples,pitch_samples):
 		
 		R = ( self.g /v_samples)*jnp.sin(roll_samples)*jnp.cos(pitch_samples)
-		Q = (pitchdot_samples-jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
+		Q = (pitchdot_samples+jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
 		psidot_samples = (jnp.sin(roll_samples)/jnp.cos(pitch_samples)*Q + jnp.cos(roll_samples)/jnp.cos(pitch_samples)*R)
 		psi_samples = psi_init+jnp.cumsum(psidot_samples*self.t)
 
@@ -370,30 +372,39 @@ class proj_cem_fwv():
 		return cost_obstacle
 
 	@partial(jit, static_argnums=(0,))
-	def compute_cost_mppi(self,controls_stack,x,y,z,x_fin,y_fin,z_fin,x_obs,y_obs,z_obs,r_obs):
+	def compute_cost(self,x_goal,y_goal,z_goal,
+					x_obs,y_obs,z_obs,r_obs,
+					x,y,z,controls_stack,u_mean,sigma):
 
+		cost_goal = ((x-x_goal)**2+(y-y_goal)**2+((z-z_goal)**2))*self.w_1
+
+		cost_obstacle_b = self.obstacle_cost_batch(x_obs,y_obs,z_obs,r_obs,x,y,z)
+		cost_obstacle = jnp.sum(cost_obstacle_b)*self.w_3
+
+
+		mppi = self.param_gamma * u_mean.T @ jnp.linalg.inv(sigma) @ controls_stack*self.w_2
+
+	
+		return cost_goal, mppi, cost_obstacle
+	
+	@partial(jit, static_argnums=(0,))
+	def compute_cost_mppi(self,
+						x_goal,y_goal,z_goal,
+						x_obs,y_obs,z_obs,r_obs,
+						x,y,z,controls_stack,
+						):
 		u_mean = jnp.mean(controls_stack,axis = 0)
+		print(u_mean.shape)
 		sigma = jnp.cov((controls_stack - u_mean).T)
+		cost_goal, cost_obstacle, mppi = self.compute_cost_batch(x_goal,y_goal,z_goal,
+																x_obs,y_obs,z_obs,r_obs,
+																x,y,z,controls_stack,u_mean,sigma
+																)
 
-		def cost_lax(carry,idx):
-			cost = carry
-			cost_goal = (x[idx]-x_fin)**2+(y[idx]-y_fin)**2+((z[idx]-z_fin)**2)
-
-			cost_obstacle_b = self.obstacle_cost_batch(x_obs,y_obs,z_obs,r_obs,x[idx],y[idx],z[idx])
-			cost_obstacle = jnp.sum(cost_obstacle_b)
-
-
-			mppi = self.param_gamma * u_mean.T @ jnp.linalg.inv(sigma) @ controls_stack[idx]
-
-			cost = cost_goal * self.w_1 + mppi*self.w_2 + cost_obstacle*self.w_3
-
-			return(cost),(cost)
-		
-		carry_init = 0
-		carry_final, result = lax.scan(cost_lax, carry_init, jnp.arange(self.num_batch))
-		cost = result
+		cost = cost_goal + cost_obstacle + mppi
 
 		return cost
+	
 
 	@partial(jit, static_argnums=(0,))
 	def comp_prod(self, diffs, d ):
@@ -429,19 +440,14 @@ class proj_cem_fwv():
 
 	@partial(jit, static_argnums=(0,))
 	def compute_epsilon(self, epsilon, w): 
-		w_epsilon_init = jnp.zeros((3))
-
-		def lax_eps(carry,idx):
-
-			w_epsilon = carry
-			w_epsilon = w_epsilon + w[idx] * epsilon[idx]
-			return (w_epsilon),(0)
-
-		carry_init = (w_epsilon_init)
-		carry_final,result = jax.lax.scan(lax_eps,carry_init,jnp.arange(self.num_batch))
-		w_epsilon = carry_final
+		we = self.compute_w_epsilon_batch(epsilon,w)
+		w_epsilon = jnp.sum(we,axis = 0)
 
 		return w_epsilon
+    
+	@partial(jit, static_argnums=(0,))
+	def compute_w_epsilon(self,epsilon,w):
+		return (w*epsilon)
 
 
 	@partial(jit, static_argnums=(0,))
@@ -487,13 +493,13 @@ class proj_cem_fwv():
 
 
 	@partial(jit, static_argnums=(0,))
-	def compute_cem(self, v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init, psi_init, x_init, y_init, z_init, x_fin, y_fin, z_fin, mean,key,x_obs,y_obs,z_obs,r_obs):
+	def pi_mppi_main(self, v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init, psi_init, x_init, y_init, z_init, x_fin, y_fin, z_fin, mean,key,x_obs,y_obs,z_obs,r_obs):
 																																		
 		b_eq_v, b_eq_pitch, b_eq_roll = self.compute_boundary_vec(v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init)
 
-		cov_v_control = 20*jnp.identity(self.nvar)
-		cov_angle_control = jnp.identity(self.nvar*2)*2
-		cov_control_init = jax.scipy.linalg.block_diag(cov_v_control, cov_angle_control)	
+		cov_v_control = 200*jnp.identity(self.nvar)
+		cov_angle_control = jnp.identity(self.nvar*2)*15
+		cov_control_init = jax.scipy.linalg.block_diag(cov_v_control, cov_angle_control)*10
 		
 		lamda_v_init = jnp.zeros((self.num_batch, self.nvar)) 
 		lamda_pitch_init = jnp.zeros((self.num_batch, self.nvar))
@@ -512,28 +518,6 @@ class proj_cem_fwv():
 		c_roll_raw_samples = c_roll_samples
 
 		raw_samples = jnp.hstack((c_v_raw_samples,c_pitch_raw_samples,c_roll_raw_samples))
-
-		# print(jnp.shape(c_t_samples)) 
-		# kk	
-
-		# v_raw_samples = jnp.dot(self.P_jax, c_v_samples.T).T 
-		# pitch_raw_samples = jnp.dot(self.P_jax, c_pitch_samples.T).T
-		# roll_raw_samples = jnp.dot(self.P_jax, c_roll_samples.T).T
-		# pitchdot_raw_samples = jnp.dot(self.Pdot_jax, c_pitch_samples.T).T
-
-		# x_traj_raw, y_traj_raw, z_traj_raw, psi_samples_raw, psidot_samples_raw = self.compute_rollouts(x_init, y_init, z_init, psi_init, v_raw_samples, roll_raw_samples, pitch_raw_samples, pitchdot_raw_samples)
-
-		# raw_states = jnp.array([x_traj_raw,y_traj_raw,z_traj_raw])
-		
-		# plt.figure()
-		# plt.plot(np.asarray(raw_states[0,:,:].T),np.asarray(raw_states[1,:,:].T))
-		# # plt.scatter(x_goal_proj_ego,y_goal_proj_ego)
-		# plt.figure()
-		# plt.plot(np.asarray(roll_raw_samples).T)
-		# plt.figure()
-		# plt.plot(np.asarray(v_raw_samples).T)
-
-		# plt.show()
 
 		################ some projection parameters
 			
@@ -557,34 +541,15 @@ class proj_cem_fwv():
 
 		##### trajectory rollouts
 		x_traj, y_traj, z_traj, psi_samples, psidot_samples = self.compute_rollouts(x_init, y_init, z_init, psi_init, v_samples, roll_samples, pitch_samples, pitchdot_samples)
-		
-		# debug plot
-		# proj_states = jnp.array([x_traj,y_traj,z_traj])
-		# plt.figure()
-		# plt.plot(np.asarray(proj_states[0,:,:].T),np.asarray(proj_states[1,:,:].T))
-		# plt.scatter(x_goal_proj_ego,y_goal_proj_ego)
-		# plt.figure()
-		# plt.plot(np.asarray(res_roll))
-		# plt.figure()
-		# plt.plot(np.asarray(roll_samples).T)
-		# plt.show()
-		# plt.figure()
-		# plt.plot(np.asarray(res_v))
-		# plt.figure()
-		# plt.plot(np.asarray(res_pitch))
-		# plt.figure()
-		# plt.plot(np.asarray(res_roll))
-		# # # plt.figure()
-		# # # plt.plot(np.asarray(v_samples).T)
-		
-		# plt.show()
 
 		controls_stack = jnp.stack((v_samples,pitch_samples,roll_samples),axis=-1)
 
 
 
 
-		S_mat = self.compute_cost_mppi_batch(controls_stack,x_traj,y_traj,z_traj,x_fin, y_fin, z_fin,x_obs,y_obs,z_obs,r_obs)
+		S_mat = self.compute_cost_mppi_batch(x_fin,y_fin,z_fin,
+					x_obs,y_obs,z_obs,r_obs,
+					x_traj,y_traj,z_traj,controls_stack)
 
 		S = jnp.sum(S_mat,axis = 0)
 
@@ -603,11 +568,9 @@ class proj_cem_fwv():
 		v_new = u_new[:,0]
 		pitch_new = u_new[:,1]
 		roll_new = u_new[:,2]
-		# pitch_new = pitch_init+jnp.cumsum(pitchdot_new*self.t)
 
 		c_v_mppi = jnp.linalg.inv(self.P_jax.T @ self.P_jax+0.001*jnp.identity(11)) @ self.P_jax.T @ v_new
 		c_pitch_mppi = jnp.linalg.inv(self.P_jax.T @ self.P_jax+0.001*jnp.identity(11)) @ self.P_jax.T @ pitch_new
-		# c_pitch_mppi = jnp.linalg.inv(self.Pdot_jax.T @ self.Pdot_jax+0.001*jnp.identity(11)) @ self.Pdot_jax.T @ pitchdot_new
 		c_roll_mppi = jnp.linalg.inv(self.P_jax.T @ self.P_jax+0.001*jnp.identity(11)) @ self.P_jax.T @ roll_new
 
 
@@ -633,36 +596,7 @@ class proj_cem_fwv():
 		pitch_single = jnp.dot(self.P_jax, c_pitch_single.T).T
 		roll_single = jnp.dot(self.P_jax, c_roll_single.T).T		
 
-		##debug
-
-		# plt.figure()
-		# plt.plot(np.asarray(res_v_single))
-		# plt.figure()
-		# plt.plot(np.asarray(res_pitch_single))
-		# plt.figure()
-		# plt.plot(np.asarray(res_roll_single))
-		# # # plt.figure()
-		# # # plt.plot(np.asarray(v_samples).T)
-		
-		# plt.show()
-
-		# c_v_single = c_v_mppi
-		# c_pitch_single = c_pitch_mppi
-		# c_roll_single = c_roll_mppi
-		# v_single = v_new
-		# pitchdot_single = pitchdot_new
-		# roll_single = roll_new
-		# pitch_single = pitch_new
-
 		x_traj_mppi, y_traj_mppi, z_traj_mppi,psi_mppi = self.compute_rollouts_mppi( x_init, y_init, z_init, psi_init, v_single, roll_single, pitchdot_single,pitch_single)
-
-		# plt.figure()
-		# plt.plot(np.asarray(res_v_single))
-		# plt.figure()
-		# plt.plot(np.asarray(res_pitch_single))
-		# plt.figure()
-		# plt.plot(np.asarray(res_roll_single))
-		# plt.show()
 
 		mean = jnp.hstack((c_v_single,c_pitch_single,c_roll_single))
 
@@ -670,56 +604,14 @@ class proj_cem_fwv():
 
 		new_init_controls = jnp.array([v_single[1],pitch_single[1],roll_single[1]])
 
-
-		## clip the controls
-		# new_v_init = jnp.clip(v_new[1],self.v_min,self.v_max)
-		# new_pitch_init = jnp.clip(pitch_new[0],self.pitch_min,self.pitch_max)
-		# new_roll_init = jnp.clip(roll_new[1],self.roll_min,self.roll_max)
-		
-		# new_init_controls = jnp.array([new_v_init,new_pitch_init,new_roll_init])
-
-
 		# Calculating new dot controls
 		v_dot_mppi, v_ddot_mppi, pitch_dot_mppi, pitch_ddot_mppi, roll_dot_mppi, roll_ddot_mppi = self.dot_controls(v_single,pitch_single,roll_single, v_init,
 																						pitch_init,roll_init,v_dot_init,pitch_dot_init,roll_dot_init)
 
-		### dot
-		# pitch_dot_mppi = jnp.dot(self.P,c_pitchdot_mppi.T) #check this 
-		# v_dot_mppi = jnp.dot(self.Pdot_jax,c_v_mppi.T)
-		# roll_dot_mppi = jnp.dot(self.Pdot_jax,c_roll_mppi.T)
 		
 		dot_values = jnp.hstack((v_dot_mppi[2],pitch_dot_mppi[2],roll_dot_mppi[2]))
 
-		### ddot
-		# v_ddot_mppi = jnp.dot(self.Pddot_jax,c_v_mppi.T)
-		# roll_ddot_mppi = jnp.dot(self.Pddot_jax,c_roll_mppi.T)
-		# pitch_ddot_mppi = jnp.dot(self.Pdot,c_pitchdot_mppi.T)
-
 		ddot_values = jnp.hstack((v_ddot_mppi[3],pitch_ddot_mppi[3],roll_ddot_mppi[3]))
 
-		## interpolation
-		# time_orig = self.tot_time
-		# time_interp = jnp.linspace(0, self.t_fin, 400)
-
-		# x_traj_mppi_interp = jnp.interp(time_interp, time_orig, x_traj_mppi)
-		# y_traj_mppi_interp = jnp.interp(time_interp, time_orig, y_traj_mppi)
-		# z_traj_mppi_interp = jnp.interp(time_interp, time_orig, z_traj_mppi)
-		# psi_mppi_interp = jnp.interp(time_interp, time_orig, psi_mppi)
-		# v_new_interp = jnp.interp(time_interp, time_orig, v_new)
-		# pitch_new_interp = jnp.interp(time_interp, time_orig, pitch_new)
-		# roll_new_interp = jnp.interp(time_interp, time_orig, roll_new)
-		# v_dot_mppi_interp = jnp.interp(time_interp, time_orig, v_dot_mppi)
-		# pitchdot_new_interp = jnp.interp(time_interp, time_orig, pitchdot_new)
-		# roll_dot_mppi_interp = jnp.interp(time_interp, time_orig, roll_dot_mppi)
-		# v_ddot_mppi_interp = jnp.interp(time_interp, time_orig, v_ddot_mppi)
-		# pitch_ddot_mppi_interp = jnp.interp(time_interp, time_orig, pitch_ddot_mppi)
-		# roll_ddot_mppi_interp = jnp.interp(time_interp, time_orig, roll_ddot_mppi)
-
-		# new_init_states = jnp.array([x_traj_mppi_interp[1],y_traj_mppi_interp[1],z_traj_mppi_interp[1],psi_mppi_interp[1]])
-		# new_init_controls = jnp.array([v_new_interp[1],pitch_new_interp[1],roll_new_interp[1]])
-
-		# dot_values = jnp.hstack((v_dot_mppi_interp[2],pitchdot_new_interp[2],roll_dot_mppi_interp[2]))
-		# ddot_values = jnp.hstack((v_ddot_mppi_interp[3],pitch_ddot_mppi_interp[3],roll_ddot_mppi_interp[3]))
-
-		return mean,key,new_init_states,new_init_controls,dot_values,ddot_values,raw_samples,proj_samples
+		return mean,key,new_init_states,new_init_controls,dot_values,ddot_values
 

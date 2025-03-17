@@ -110,7 +110,7 @@ class pi_mppi():
 
         self.param_exploration = 0.0  # constant parameter of mppi
         self.param_lambda = 50  # constant parameter of mppi
-        self.param_alpha = 1.0 # constant parameter of mppi
+        self.param_alpha = 0.99 # constant parameter of mppi
         self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
         self.stage_cost_weight = 1
         self.terminal_cost_weight = 1
@@ -133,9 +133,15 @@ class pi_mppi():
 
         ### Initializing functions - batch ###
         self.compute_cross_track_batch = jit(jax.vmap(self.compute_cross_track, in_axes = (0, 0, 0, None, None, None) )   )
-        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,1,1,1,None,None,None)))
+
+        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (None,None,None,1,1,1,1)))
+        self.compute_cost_batch = jit(vmap(self.compute_cost,in_axes=((None,None,None,0,0,0,0,None,None))))
+        
         self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
+        
         self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
+        self.compute_w_epsilon_batch = jit(vmap(self.compute_w_epsilon,in_axes = (0,0)))
+
 
     @partial(jit, static_argnums=(0,))	
     def compute_boundary_vec(self, v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init):
@@ -322,7 +328,7 @@ class pi_mppi():
     def compute_rollouts(self,  x_init, y_init, z_init, psi_init, v_samples, roll_samples, pitch_samples, pitchdot_samples):
         
         R = ( self.g /v_samples)*jnp.sin(roll_samples)*jnp.cos(pitch_samples)
-        Q = (pitchdot_samples-jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
+        Q = (pitchdot_samples+jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
         psidot_samples = (jnp.sin(roll_samples)/jnp.cos(pitch_samples)*Q + jnp.cos(roll_samples)/jnp.cos(pitch_samples)*R)
         psi_samples = psi_init+jnp.cumsum(psidot_samples*self.t, axis = 1)
         psi_samples = jnp.hstack(( psi_init*jnp.ones(( self.num_batch, 1 )), psi_samples[:, 0:-1]    ))
@@ -346,7 +352,7 @@ class pi_mppi():
         
         # pitch_samples = pitch_init+jnp.cumsum(pitchdot_samples*self.t)
         R = ( self.g /v_samples)*jnp.sin(roll_samples)*jnp.cos(pitch_samples)
-        Q = (pitchdot_samples-jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
+        Q = (pitchdot_samples+jnp.sin(roll_samples)*R)/jnp.cos(roll_samples)
         psidot_samples = (jnp.sin(roll_samples)/jnp.cos(pitch_samples)*Q + jnp.cos(roll_samples)/jnp.cos(pitch_samples)*R)
         psi_samples = psi_init+jnp.cumsum(psidot_samples*self.t)
 
@@ -370,41 +376,43 @@ class pi_mppi():
     
         return jnp.clip(map_coordinates(self.terrain, [[i], [j]], order=1, mode='nearest')[0],0,None)
 
-    
 
     @partial(jit, static_argnums=(0,))
-    def compute_cost_mppi(self,controls_stack,x,y,z,x_fin,y_fin,z_fin,):
+    def compute_cost(self,x_goal,y_goal,z_goal,
+                    x,y,z,controls_stack,u_mean,sigma
+                          ):
 
-        u_mean = jnp.mean(controls_stack,axis = 0)
-        sigma = jnp.cov((controls_stack - u_mean).T)
+        # Goal reaching cost
+        cost_goal = ((x-x_goal)**2+(y-y_goal)**2) * self.w_1 
 
-        def cost_lax(carry,idx):
-            cost = carry
-            cost_goal = ((x[idx]-x_fin)**2+(y[idx]-y_fin)**2)
+        # Terrain altitude at the x[idx] y[idx]
+        z_terrain = self.get_height_at(x,y	)
 
-
-            z_terrain = self.get_height_at(x[idx],y[idx]	)
-
-            f_z = ((z[idx]-(z_terrain+self.d_0)))
-
-            cost_alt = jnp.maximum(0,-f_z)
-
-            f_z_max = ((z[idx]-(z_terrain+self.z_des)))
-
-            cost_z = jnp.maximum(0,f_z_max)
-
-            cost_mppi = self.param_gamma * u_mean.T @ jnp.linalg.inv(sigma) @ controls_stack[idx]
-
-
-            cost = cost_goal * self.w_1 + cost_mppi * self.w_2 + cost_alt * self.w_3 + cost_z * self.w_4
-
-            return(cost),(cost)
+        # Terrain cost
+        f_z = ((z-(z_terrain+self.d_0)))
+        cost_min_alt = jnp.maximum(0,-f_z) * self.w_3
         
-        carry_init = 0
-        carry_final, result = lax.scan(cost_lax, carry_init, jnp.arange(self.num_batch))
-        cost = result
+        # Desired altitude cost
+        f_z_max = ((z-(z_terrain+self.z_des)))
+        cost_z = jnp.maximum(0,f_z_max) * self.w_4
+
+        mppi = (self.param_gamma * u_mean @ jnp.linalg.inv(sigma) @ controls_stack) * self.w_2
+
+        return cost_goal, cost_min_alt, cost_z, mppi
+    
+    @partial(jit, static_argnums=(0,))
+    def compute_cost_mppi(self,
+						x_goal,y_goal,z_goal,
+						x,y,z,controls_stack,):
+        u_mean = jnp.mean(controls_stack,axis = 0)
+
+        sigma = jnp.cov((controls_stack - u_mean).T)
+        cost_goal, cost_min_alt, cost_z, mppi = self.compute_cost_batch(x_goal,y_goal,z_goal,
+																x,y,z,controls_stack,u_mean,sigma)
+        cost = cost_goal + cost_min_alt + cost_z + mppi
 
         return cost
+    
 
     @partial(jit, static_argnums=(0,))
     def comp_prod(self, diffs, d ):
@@ -451,19 +459,14 @@ class pi_mppi():
 
     @partial(jit, static_argnums=(0,))
     def compute_epsilon(self, epsilon, w): 
-        w_epsilon_init = jnp.zeros((3))
-
-        def lax_eps(carry,idx):
-
-            w_epsilon = carry
-            w_epsilon = w_epsilon + w[idx] * epsilon[idx]
-            return (w_epsilon),(0)
-
-        carry_init = (w_epsilon_init)
-        carry_final,result = jax.lax.scan(lax_eps,carry_init,jnp.arange(self.num_batch))
-        w_epsilon = carry_final
+        we = self.compute_w_epsilon_batch(epsilon,w)
+        w_epsilon = jnp.sum(we,axis = 0)
 
         return w_epsilon
+    
+    @partial(jit, static_argnums=(0,))
+    def compute_w_epsilon(self,epsilon,w):
+        return (w*epsilon)
 
     @partial(jit, static_argnums=(0,))
     def dot_controls(self,v,pitch,roll, v_init,pitch_init,roll_init,v_dot_init,pitch_dot_init,roll_dot_init):
@@ -562,8 +565,8 @@ class pi_mppi():
         controls_stack = jnp.stack((v_samples,pitch_samples,roll_samples),axis=-1)
 
 
-        S_mat = self.compute_cost_mppi_batch(controls_stack,x_traj_global,y_traj_global,z_traj_global,x_fin, y_fin, z_fin)
-
+        S_mat = self.compute_cost_mppi_batch(x_fin,y_fin,z_fin,
+					x_traj_global,y_traj_global,z_traj_global,controls_stack)
         S = jnp.sum(S_mat,axis = 0)
 
 
