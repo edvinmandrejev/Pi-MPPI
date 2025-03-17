@@ -75,7 +75,7 @@ class MPPI_base():
         self.rollddot_min = rollddot_min
 
         self.g = 9.81
-        self.num_batch = num_batch
+        self.num_batch = 4000
         self.num = num
         self.t = 0.2
 
