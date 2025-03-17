@@ -10,13 +10,13 @@ import jax
 import jax.lax as lax
 from jax.scipy.ndimage import map_coordinates
 
-class pi_mppi():
+class pi_mppi_base():
 
     def __init__(self,v_max, v_min, vdot_max, vdot_min, vddot_max,vddot_min,
                     pitch_max,pitch_min, pitchdot_max, pitchdot_min, pitchddot_max, pitchddot_min,
                         roll_max, roll_min, rolldot_max, rolldot_min, rollddot_max, rollddot_min,
                         scale, octaves, persistence, lacunarity, width, height, altitude_scale, altitude_offset,
-                        terrain,x_range,y_range,num_batch):
+                        terrain,x_range,y_range):
 
 
         # Weights
@@ -60,7 +60,7 @@ class pi_mppi():
         self.t_fin = 20
         self.num = 100
         self.t = self.t_fin/self.num
-        self.num_batch = num_batch
+        self.num_batch = 1000
 
         ### Waypoint parameterization for control inputs ###
         
@@ -108,7 +108,6 @@ class pi_mppi():
         self.g = 9.81
         self.vec_product = jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
 
-<<<<<<< HEAD
         self.param_exploration = 0.0  # constant parameter of mppi
         self.param_lambda = 50  # constant parameter of mppi
         self.param_alpha = 0.99 # constant parameter of mppi
@@ -117,18 +116,7 @@ class pi_mppi():
         self.terminal_cost_weight = 1
 
         ###Terrain initialisation ###
-=======
-        self.compute_cross_track_batch = jit(jax.vmap(self.compute_cross_track, in_axes = (0, 0, 0, None, None, None) )   )
-        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,1,1,1,None,None,None)))
-        self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
 
-        self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
-				
-        self.param_lambda = 50  # constant parameter of mppi
-        self.param_alpha = 0.99 # constant parameter of mppi
-        self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
-        ############################### Terrain initialisation #####################
->>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
 
         self.scale = scale
         self.octaves = octaves
@@ -646,4 +634,4 @@ class pi_mppi():
         dot_values = jnp.hstack((v_dot_mppi[2],pitch_dot_mppi[2],roll_dot_mppi[2]))
         ddot_values = jnp.hstack((v_ddot_mppi[3],pitch_ddot_mppi[3],roll_ddot_mppi[3]))
 
-        return mean,key,new_init_states,new_init_controls,dot_values,ddot_values
+        return mean,key,new_init_states,new_init_controls,dot_values,ddot_values,raw_samples,proj_samples

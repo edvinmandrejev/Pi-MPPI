@@ -101,7 +101,7 @@ class learned_pi_mppi():
         self.rho_projection = 1.0
         self.rho_ineq = 1.0
         
-        #self.beta = 5
+        self.beta = 5
 
         ####################################
         
@@ -127,16 +127,19 @@ class learned_pi_mppi():
 
         self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (None,None,None,1,1,1,1)))
         self.compute_cost_batch = jit(vmap(self.compute_cost,in_axes=((None,None,None,0,0,0,0,None,None))))
-        
+
         self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
 
         self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
         self.compute_w_epsilon_batch = jit(vmap(self.compute_w_epsilon,in_axes = (0,0)))
 
 
+        self.param_exploration = 0.0  # constant parameter of mppi
         self.param_lambda = 50  # constant parameter of mppi
-        self.param_alpha = 0.99 # constant parameter of mppi
+        self.param_alpha = 1.0 # constant parameter of mppi
         self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
+        self.stage_cost_weight = 1
+        self.terminal_cost_weight = 1
         ############################### Terrain initialisation #####################
 
         self.scale = scale
@@ -484,6 +487,58 @@ class learned_pi_mppi():
 
 
 
+    # @partial(jit, static_argnums=(0,))
+    # def compute_cost_mppi(self,controls_stack,x,y,z,x_fin,y_fin,z_fin,):
+
+    #     u_mean = jnp.mean(controls_stack,axis = 0)
+    #     sigma = jnp.cov((controls_stack - u_mean).T)
+
+    #     def cost_lax(carry,idx):
+    #         cost = carry
+    #         cost_goal = ((x[idx]-x_fin)**2+(y[idx]-y_fin)**2)
+
+    #         # z_terrain = 100*(0.1*jnp.cos(0.01*x[idx]) + 0.1*jnp.sin(0.01*y[idx]))
+
+    #         # z_terrain = 40*(0.7*jnp.cos(0.016*x[idx]) + 0.4*jnp.sin(0.016*y[idx])) #(75*(jnp.cos(0.02*x[idx]) + jnp.sin(0.02*y[idx])))
+    #         # z_terrain = jnp.clip(z_terrain,0,40)
+
+    #         z_terrain = self.get_height_at(x[idx],y[idx]	)
+
+    #         f_z = ((z[idx]-(z_terrain+self.d_0)))
+
+    #         # cost_alt = jnp.log(1+jnp.exp(-self.beta*f_z))/self.beta
+    #         cost_alt = jnp.maximum(0,-f_z)
+            
+    #         # cost_z = ((z_terrain+self.z_des) - z[idx])**2
+
+    #         f_z_max = ((z[idx]-(z_terrain+self.z_des)))
+    #         cost_z = jnp.maximum(0,f_z_max)
+
+    #         cost_mppi = self.param_gamma * u_mean.T @ jnp.linalg.inv(sigma) @ controls_stack[idx]
+
+    #         # cost_array = jnp.array([cost_goal,cost_alt,cost_z,cost_mppi])
+
+    #         # cost_min = jnp.min(cost_array)
+    #         # cost_max = jnp.max(cost_array)
+            
+            
+    #         # c_1 = ((cost_goal - cost_min)/(cost_max - cost_min + 0.0001)) * self.w_1 
+    #         # c_3 = ((cost_alt - cost_min)/(cost_max - cost_min+ 0.0001)) * self.w_3
+    #         # c_4 = ((cost_z - cost_min)/(cost_max - cost_min+ 0.0001)) * self.w_4
+    #         # c_2 = ((cost_mppi- cost_min)/(cost_max - cost_min+ 0.0001)) * self.w_2
+
+
+    #         cost = cost_goal * self.w_1 + cost_mppi * self.w_2 + cost_alt * self.w_3 + cost_z * self.w_4
+
+    #         return(cost),(cost)
+        
+    #     carry_init = 0
+    #     carry_final, result = lax.scan(cost_lax, carry_init, jnp.arange(self.num_batch))
+    #     cost = result
+
+    #     return cost
+
+
     @partial(jit, static_argnums=(0,))
     def compute_cost(self,x_goal,y_goal,z_goal,
                     x,y,z,controls_stack,u_mean,sigma
@@ -519,6 +574,7 @@ class learned_pi_mppi():
         cost = cost_goal + cost_min_alt + cost_z + mppi
 
         return cost
+    
 
     @partial(jit, static_argnums=(0,))
     def comp_prod(self, diffs, d ):
@@ -563,6 +619,22 @@ class learned_pi_mppi():
 
         return w
 
+    # @partial(jit, static_argnums=(0,))
+    # def compute_epsilon(self, epsilon, w): 
+    #     w_epsilon_init = jnp.zeros((3))
+
+    #     def lax_eps(carry,idx):
+
+    #         w_epsilon = carry
+    #         w_epsilon = w_epsilon + w[idx] * epsilon[idx]
+    #         return (w_epsilon),(0)
+
+    #     carry_init = (w_epsilon_init)
+    #     carry_final,result = jax.lax.scan(lax_eps,carry_init,jnp.arange(self.num_batch))
+    #     w_epsilon = carry_final
+
+    #     return w_epsilon
+
     @partial(jit, static_argnums=(0,))
     def compute_epsilon(self, epsilon, w): 
         we = self.compute_w_epsilon_batch(epsilon,w)
@@ -587,7 +659,7 @@ class learned_pi_mppi():
         pitch = pitch_init + pitchdot_new*self.t/2
 
         R = ( self.g /v)*jnp.sin(roll)*jnp.cos(pitch)
-        Q = (pitchdot_new-jnp.sin(roll)*R)/jnp.cos(roll)
+        Q = (pitchdot_new+jnp.sin(roll)*R)/jnp.cos(roll)
         psidot = (jnp.sin(roll)/jnp.cos(pitch)*Q + jnp.cos(roll)/jnp.cos(pitch)*R)
         psi = psi_init+(psidot*self.t/2)
 
@@ -659,7 +731,7 @@ class learned_pi_mppi():
         
         return s_control
 
-    @partial(jit, static_argnums=(0,))
+    #@partial(jit, static_argnums=(0,))
     def compute_cem(self, v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init, psi_init, x_init, y_init, z_init,
                      x_fin, y_fin, z_fin, mean,key,x_global,y_global,z_global,lamda_v_init,lamda_pitch_init,lamda_roll_init,
                     c_v_samples_nn,c_pitch_samples_nn,c_roll_samples_nn, c_v_samples,c_pitch_samples,c_roll_samples):
@@ -703,7 +775,7 @@ class learned_pi_mppi():
         ################ some projection parameters
         b_eq_v, b_eq_pitch, b_eq_roll = self.compute_boundary_vec(v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init)
 
-        #c_v_samples, c_pitch_samples, c_roll_samples, res_v, res_pitch, res_roll, lamda_v, lamda_pitch, lamda_roll, s_v, s_pitch, s_roll = self.compute_projection(lamda_v_init, lamda_pitch_init, lamda_roll_init, s_v_init, s_pitch_init, s_roll_init, c_v_samples, c_pitch_samples, c_roll_samples, b_eq_v, b_eq_pitch, b_eq_roll)
+        c_v_samples, c_pitch_samples, c_roll_samples, res_v, res_pitch, res_roll, lamda_v, lamda_pitch, lamda_roll, s_v, s_pitch, s_roll = self.compute_projection(lamda_v_init, lamda_pitch_init, lamda_roll_init, s_v_init, s_pitch_init, s_roll_init, c_v_samples, c_pitch_samples, c_roll_samples, b_eq_v, b_eq_pitch, b_eq_roll)
 
         # plt.figure()
         # plt.plot(np.asarray(res_roll))
@@ -742,7 +814,6 @@ class learned_pi_mppi():
 
         S_mat = self.compute_cost_mppi_batch(x_fin,y_fin,z_fin,
 					x_traj_global,y_traj_global,z_traj_global,controls_stack)
-
         S = jnp.sum(S_mat,axis = 0)
 
 
