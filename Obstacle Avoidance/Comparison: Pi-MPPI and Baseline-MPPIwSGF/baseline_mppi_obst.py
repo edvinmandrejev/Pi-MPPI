@@ -10,9 +10,13 @@ import jax.lax as lax
 
 class MPPI_base():
     def __init__(self,num,
-                  v_max, v_min, vdot_max, vdot_min, vddot_max,vddot_min,
+                    v_max, v_min, vdot_max, vdot_min, vddot_max,vddot_min,
                     pitch_max,pitch_min, pitchdot_max, pitchdot_min, pitchddot_max, pitchddot_min,
+<<<<<<< HEAD
                       roll_max, roll_min, rolldot_max, rolldot_min, rollddot_max, rollddot_min,num_batch,beta):
+=======
+                        roll_max, roll_min, rolldot_max, rolldot_min, rollddot_max, rollddot_min):
+>>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
         
         # Smoothening
         self.window_size = 20
@@ -62,8 +66,8 @@ class MPPI_base():
         self.pitch_max = pitch_max
         self.pitch_min = pitch_min
 
-        self.pitch_dot_max = pitchdot_max
-        self.pitch_dot_min = pitchdot_min
+        self.pitchdot_max = pitchdot_max
+        self.pitchdot_min = pitchdot_min
 
         self.pitchddot_max = pitchddot_max
         self.pitchddot_min = pitchddot_min
@@ -89,6 +93,7 @@ class MPPI_base():
         self.mean = jnp.hstack(( mean_v, mean_pitch, mean_roll ))
 #0.008, 0.0015, 0.006
 
+<<<<<<< HEAD
         # cov_v_control = jnp.identity(self.num)*0.02
         # cov_control_pitch = jnp.identity(self.num)*0.002
         # cov_control_roll = jnp.identity(self.num)*0.0002
@@ -106,10 +111,21 @@ class MPPI_base():
         #mppi
         self.param_exploration = 0.0  # constant parameter of mppi
         self.param_lambda = beta  # constant parameter of mppi
+=======
+        cov_v = 0.02
+        cov_pitch = 0.002
+        cov_roll = 0.0002
+        cov_v_control = jnp.identity(self.num)*cov_v
+        cov_control_pitch = jnp.identity(self.num)*cov_pitch
+        cov_control_roll = jnp.identity(self.num)*cov_roll
+
+        self.cov = jax.scipy.linalg.block_diag(cov_v_control, cov_control_pitch,cov_control_roll)
+        self.sigma = jnp.diag(jnp.array([cov_v,cov_pitch,cov_roll]))
+        #mppi
+        self.param_lambda = 50  # constant parameter of mppi
+>>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
         self.param_alpha = 0.99 # constant parameter of mppi
         self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
-        self.stage_cost_weight = 1
-        self.terminal_cost_weight = 1
 
         # initialization
         self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,None,None,None, None, None, None, None,1,1,1,1,1,1,1,1,1,1)))
@@ -215,9 +231,16 @@ class MPPI_base():
 
         # DDot cost
 
+<<<<<<< HEAD
         cost_v_ddot = (jnp.maximum(0,(jnp.abs(v_ddot) - self.vddot_max))) * self.w_7
         cost_pitch_ddot = (jnp.maximum(0,(jnp.abs(pitch_ddot) - self.pitchddot_max))) * self.w_8
         cost_roll_ddot = (jnp.maximum(0,(jnp.abs(roll_ddot) - self.rollddot_max))) * self.w_9
+=======
+            # Dot cost
+            cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot[idx]) - self.vdot_max))) * self.w_4
+            cost_pitch_dot = (jnp.maximum(0,(jnp.abs(pitch_dot[idx]) - self.pitchdot_max))) * self.w_5
+            cost_roll_dot = (jnp.maximum(0,(jnp.abs(roll_dot[idx]) - self.rolldot_max))) * self.w_6
+>>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
 
         return cost_goal, cost_obstacle, mppi, cost_v_dot, cost_pitch_dot, cost_roll_dot, cost_v_ddot, cost_pitch_ddot, cost_roll_ddot
 
@@ -437,7 +460,7 @@ class MPPI_base():
         
         v_prev = jnp.zeros((self.num))
         v_prev = v_prev.at[:-1].set(v_new[1:])
-        v_prev = v_prev.at[-1]. set(v_new[-1])
+        v_prev = v_prev.at[-1].set(v_new[-1])
 
         pitch_prev = jnp.zeros((self.num))
         pitch_prev = pitch_prev.at[:-1].set(pitch_new[1:])
@@ -458,7 +481,6 @@ class MPPI_base():
 
         ddot_new = jnp.array([v_ddot_new[0][3],pitch_ddot_new[0][3],roll_ddot_new[0][3]])
 
-        # Optimal trajectory
 
 
         return key, init_states_upd, init_controls_upd, dot_new, ddot_new, u_prev

@@ -59,8 +59,8 @@ class MPPI_base():
         self.pitch_max = pitch_max
         self.pitch_min = pitch_min
 
-        self.pitch_dot_max = pitchdot_max
-        self.pitch_dot_min = pitchdot_min
+        self.pitchdot_max = pitchdot_max
+        self.pitchdot_min = pitchdot_min
 
         self.pitchddot_max = pitchddot_max
         self.pitchddot_min = pitchddot_min
@@ -103,15 +103,19 @@ class MPPI_base():
         self.pitchdot_init = 0
         self.rolldot_init = 0
 
-        self.beta = 5
-
         ### MPPI Parameters ###
+<<<<<<< HEAD
         self.param_exploration = 0.0  # constant parameter of mppi
         #self.param_lambda = 50  # constant parameter of mppi
         self.param_alpha =  0.99# constant parameter of mppi
         #self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
         self.stage_cost_weight = 1
         self.terminal_cost_weight = 1
+=======
+        self.param_lambda = 50  # constant parameter of mppi
+        self.param_alpha = 0.99 # constant parameter of mppi
+        self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
+>>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
 
         ############################### Terrain initialisation #####################
         self.scale = scale
@@ -263,6 +267,52 @@ class MPPI_base():
         return cost,cost_dot,cost_terrain,cost_ddot,cost_goal
     
 
+<<<<<<< HEAD
+=======
+        def cost_lax(carry,idx): 
+
+            cost = carry
+
+            # Goal reaching cost
+            cost_goal = ((x[idx]-x_goal)**2+(y[idx]-y_goal)**2) * self.w_1 
+
+            # Terrain altitude at the x[idx] y[idx]
+            z_terrain = self.get_height_at(x[idx],y[idx]	)
+
+            # Terrain cost
+            f_z = ((z[idx]-(z_terrain+self.d_0)))
+            cost_min_alt = jnp.maximum(0,-f_z) * self.w_3_1
+            
+            # Desired altitude cost
+            f_z_max = ((z[idx]-(z_terrain+self.z_des)))
+            cost_z = jnp.maximum(0,f_z_max) * self.w_3_2
+
+
+            # MPPI cost
+            #u_mppi = jnp.stack((u[idx],u[idx+self.num],u[idx+self.num*2]))
+            mppi = (self.param_gamma * u[idx] @ jnp.linalg.inv(self.sigma) @ controls_stack[idx]) * self.w_2
+
+            # Dot cost
+            cost_v_dot = (jnp.maximum(0,(jnp.abs(v_dot[idx]) - self.vdot_max))) * self.w_4
+            cost_pitch_dot = (jnp.maximum(0,(jnp.abs(pitch_dot[idx]) - self.pitchdot_max))) * self.w_5
+            cost_roll_dot = (jnp.maximum(0,(jnp.abs(roll_dot[idx]) - self.rolldot_max))) * self.w_6
+
+            # DDot cost
+
+            cost_v_ddot = (jnp.maximum(0,(jnp.abs(v_ddot[idx]) - self.vddot_max))) * self.w_7
+            cost_pitch_ddot = (jnp.maximum(0,(jnp.abs(pitch_ddot[idx]) - self.pitchddot_max))) * self.w_8
+            cost_roll_ddot = (jnp.maximum(0,(jnp.abs(roll_ddot[idx]) - self.rollddot_max))) * self.w_9
+
+            cost = cost_goal + cost_min_alt + cost_z + mppi + cost_v_dot + cost_pitch_dot + cost_roll_dot + cost_v_ddot + cost_pitch_ddot + cost_roll_ddot
+
+            return (cost),(cost)
+
+        carry_init = 0
+        carry_final, result = lax.scan(cost_lax, carry_init, jnp.arange(self.num_batch))
+        cost = result
+
+        return cost
+>>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
     
     @partial(jit, static_argnums=(0,))
     def _compute_weights(self, S, rho, eta,beta):
@@ -506,7 +556,7 @@ class MPPI_base():
         
         v_prev = jnp.zeros((self.num))
         v_prev = v_prev.at[:-1].set(v_new[1:])
-        v_prev = v_prev.at[-1]. set(v_new[-1])
+        v_prev = v_prev.at[-1].set(v_new[-1])
 
         pitch_prev = jnp.zeros((self.num))
         pitch_prev = pitch_prev.at[:-1].set(pitch_new[1:])

@@ -91,7 +91,7 @@ class pi_mppi():
         self.rho_projection = 1.0
         self.rho_ineq = 1.0
         
-        self.beta = 5
+        #self.beta = 5
 
         self.rho_ineq = 1.0
         
@@ -108,6 +108,7 @@ class pi_mppi():
         self.g = 9.81
         self.vec_product = jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
 
+<<<<<<< HEAD
         self.param_exploration = 0.0  # constant parameter of mppi
         self.param_lambda = 50  # constant parameter of mppi
         self.param_alpha = 0.99 # constant parameter of mppi
@@ -116,6 +117,18 @@ class pi_mppi():
         self.terminal_cost_weight = 1
 
         ###Terrain initialisation ###
+=======
+        self.compute_cross_track_batch = jit(jax.vmap(self.compute_cross_track, in_axes = (0, 0, 0, None, None, None) )   )
+        self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (1,1,1,1,None,None,None)))
+        self.compute_weights_batch = jit(vmap(self._compute_weights, in_axes = ( 0, None, None )  ))
+
+        self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
+				
+        self.param_lambda = 50  # constant parameter of mppi
+        self.param_alpha = 0.99 # constant parameter of mppi
+        self.param_gamma = self.param_lambda * (1.0 - (self.param_alpha))  # constant parameter of mppi
+        ############################### Terrain initialisation #####################
+>>>>>>> 1da2c8810f77a3e9ed0caa45cd93f11333e4dd25
 
         self.scale = scale
         self.octaves = octaves
