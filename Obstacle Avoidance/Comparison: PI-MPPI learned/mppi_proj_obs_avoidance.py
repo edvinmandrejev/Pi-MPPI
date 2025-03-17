@@ -110,7 +110,7 @@ class pi_mppi():
 		
 		self.lamda = 0.9
 		self.g = 9.81
-		self.vec_product = jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
+		# self.vec_product = jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
 
 		self.compute_cost_mppi_batch = jit(vmap(self.compute_cost_mppi,in_axes = (None,None,None,None,None,None,None,1,1,1,1)))
 		self.compute_cost_batch = jit(vmap(self.compute_cost,in_axes=((None,None,None,None,None,None,None,0,0,0,0,None,None))))
@@ -119,7 +119,10 @@ class pi_mppi():
 		self.obstacle_cost_batch = jit(vmap(self.obstacle_cost,in_axes = (0,0,0,0,None,None,None)))
 
 		self.compute_epsilon_batch = jit(vmap(self.compute_epsilon, in_axes = ( 1, None )  ))
+
 		self.compute_w_epsilon_batch = jit(vmap(self.compute_w_epsilon,in_axes = (0,0)))
+
+		self.param_exploration = 0.0  # constant parameter of mppi
 
 		self.param_lambda = 50  # constant parameter of mppi
 		self.param_alpha = 0.99 # constant parameter of mppi
@@ -391,40 +394,39 @@ class pi_mppi():
 						x,y,z,controls_stack,
 						):
 		u_mean = jnp.mean(controls_stack,axis = 0)
-		print(u_mean.shape)
+
 		sigma = jnp.cov((controls_stack - u_mean).T)
 		cost_goal, cost_obstacle, mppi = self.compute_cost_batch(x_goal,y_goal,z_goal,
 																x_obs,y_obs,z_obs,r_obs,
 																x,y,z,controls_stack,u_mean,sigma
 																)
-
 		cost = cost_goal + cost_obstacle + mppi
 
 		return cost
 	
 
-	@partial(jit, static_argnums=(0,))
-	def comp_prod(self, diffs, d ):
-		term_1 = jnp.expand_dims(diffs, axis = 1)
-		term_2 = jnp.expand_dims(diffs, axis = 0)
-		prods = d * jnp.outer(term_1,term_2)
-		# prods = d*jnp.outer(diffs,diffs)
-		return prods	
+	# @partial(jit, static_argnums=(0,))
+	# def comp_prod(self, diffs, d ):
+	# 	term_1 = jnp.expand_dims(diffs, axis = 1)
+	# 	term_2 = jnp.expand_dims(diffs, axis = 0)
+	# 	prods = d * jnp.outer(term_1,term_2)
+	# 	# prods = d*jnp.outer(diffs,diffs)
+	# 	return prods	
 
-	@partial(jit, static_argnums=(0,))
-	def comp_mean_cov(self, cost_ellite, mean_control_prev, cov_control_prev, samples_ellite):
+	# @partial(jit, static_argnums=(0,))
+	# def comp_mean_cov(self, cost_ellite, mean_control_prev, cov_control_prev, samples_ellite):
 		
-		w = cost_ellite
-		w_min = jnp.min(cost_ellite)
-		w = jnp.exp(-(1/self.lamda) * (w - w_min ) )
-		sum_w = jnp.sum(w, axis = 0)
-		mean_control = (1-self.alpha_mean)*mean_control_prev + self.alpha_mean*(jnp.sum( (samples_ellite * w[:,jnp.newaxis]) , axis= 0)/ sum_w)
-		diffs = (samples_ellite - mean_control)
-		prod_result = self.vec_product(diffs, w)
-		cov_control = (1-self.alpha_cov)*cov_control_prev + self.alpha_cov*(jnp.sum( prod_result , axis = 0)/jnp.sum(w, axis = 0)) + 0.0001*jnp.identity(self.nvar*3)
+	# 	w = cost_ellite
+	# 	w_min = jnp.min(cost_ellite)
+	# 	w = jnp.exp(-(1/self.lamda) * (w - w_min ) )
+	# 	sum_w = jnp.sum(w, axis = 0)
+	# 	mean_control = (1-self.alpha_mean)*mean_control_prev + self.alpha_mean*(jnp.sum( (samples_ellite * w[:,jnp.newaxis]) , axis= 0)/ sum_w)
+	# 	diffs = (samples_ellite - mean_control)
+	# 	prod_result = self.vec_product(diffs, w)
+	# 	cov_control = (1-self.alpha_cov)*cov_control_prev + self.alpha_cov*(jnp.sum( prod_result , axis = 0)/jnp.sum(w, axis = 0)) + 0.0001*jnp.identity(self.nvar*3)
 
 		
-		return mean_control, cov_control
+	# 	return mean_control, cov_control
 		
 
 	@partial(jit, static_argnums=(0,))
@@ -494,9 +496,9 @@ class pi_mppi():
 																																		
 		b_eq_v, b_eq_pitch, b_eq_roll = self.compute_boundary_vec(v_init, v_dot_init, pitch_init, pitch_dot_init, roll_init, roll_dot_init)
 
-		cov_v_control = 200*jnp.identity(self.nvar)
-		cov_angle_control = jnp.identity(self.nvar*2)*15
-		cov_control_init = jax.scipy.linalg.block_diag(cov_v_control, cov_angle_control)*10
+		cov_v_control = 20*jnp.identity(self.nvar)
+		cov_angle_control = jnp.identity(self.nvar*2)*2
+		cov_control_init = jax.scipy.linalg.block_diag(cov_v_control, cov_angle_control)
 		
 		lamda_v_init = jnp.zeros((self.num_batch, self.nvar)) 
 		lamda_pitch_init = jnp.zeros((self.num_batch, self.nvar))
@@ -510,11 +512,12 @@ class pi_mppi():
 		c_v_samples, c_pitch_samples, c_roll_samples, key = self.compute_control_samples(key, mean, cov_control_init)
 
 
-		c_v_raw_samples = c_v_samples
-		c_pitch_raw_samples = c_pitch_samples 
-		c_roll_raw_samples = c_roll_samples
+		# c_v_raw_samples = c_v_samples
+		# c_pitch_raw_samples = c_pitch_samples 
+		# c_roll_raw_samples = c_roll_samples
 
-		raw_samples = jnp.hstack((c_v_raw_samples,c_pitch_raw_samples,c_roll_raw_samples))
+		# raw_samples = jnp.hstack((c_v_raw_samples,c_pitch_raw_samples,c_roll_raw_samples))
+
 
 		################ some projection parameters
 			
@@ -523,11 +526,11 @@ class pi_mppi():
 			 											 s_roll_init, c_v_samples, c_pitch_samples, c_roll_samples, b_eq_v, b_eq_pitch, b_eq_roll)
 
 
-		proj_samples = jnp.hstack((c_v_samples,c_pitch_samples,c_roll_samples))
+		# proj_samples = jnp.hstack((c_v_samples,c_pitch_samples,c_roll_samples))
 
-		res_v_cost = res_v.T[:, -1]
-		res_pitch_cost = res_pitch.T[:, -1]
-		res_roll_cost = res_roll.T[:, -1]
+		# res_v_cost = res_v.T[:, -1]
+		# res_pitch_cost = res_pitch.T[:, -1]
+		# res_roll_cost = res_roll.T[:, -1]
 
 		v_samples = jnp.dot(self.P_jax, c_v_samples.T).T 
 		vdot_samples = jnp.dot(self.Pdot_jax, c_v_samples.T).T
@@ -541,12 +544,10 @@ class pi_mppi():
 
 		controls_stack = jnp.stack((v_samples,pitch_samples,roll_samples),axis=-1)
 
-
-
-
 		S_mat = self.compute_cost_mppi_batch(x_fin,y_fin,z_fin,
 					x_obs,y_obs,z_obs,r_obs,
 					x_traj,y_traj,z_traj,controls_stack)
+
 
 		S = jnp.sum(S_mat,axis = 0)
 
